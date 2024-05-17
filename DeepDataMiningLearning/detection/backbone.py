@@ -8,6 +8,10 @@ from torchvision.ops.feature_pyramid_network import ExtraFPNBlock, FeaturePyrami
 from torchvision.models import resnet #, resnet50, ResNet50_Weights
 from torchvision.models import get_model, get_model_weights, get_weight, list_models
 
+from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection.rpn import AnchorGenerator
+from torchvision.models.inception import inception_v3
+
 def get_backbone(model_name: str,
                  norm_layer: Optional[Callable[..., nn.Module]] = None,
                  ):
@@ -161,3 +165,35 @@ if __name__ == "__main__":
     output = model(x) 
     print([(k, v.shape) for k, v in output.items()])
     #[('0', torch.Size([1, 256, 16, 16])), ('1', torch.Size([1, 256, 8, 8])), ('2', torch.Size([1, 256, 4, 4])), ('3', torch.Size([1, 256, 2, 2])), ('pool', torch.Size([1, 256, 1, 1]))]
+
+
+# integrating (Inception)Googlenet backbone
+def get_googlenet_fasterrcnn(num_classes):
+    # Load a pre-trained Inception v3 model
+    backbone = inception_v3(pretrained=True)
+    # Remove the fully connected layers (including AuxLogits)
+    backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
+    backbone.out_channels = 2048  # The number of output channels of the last layer before avgpool
+
+    # Generate anchors
+    anchor_generator = AnchorGenerator(
+        sizes=((32, 64, 128, 256, 512),),
+        aspect_ratios=((0.5, 1.0, 2.0),) * 5
+    )
+
+    # Define ROI pooling
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+        featmap_names=['0'],
+        output_size=7,
+        sampling_ratio=2
+    )
+
+    # Combine with Faster R-CNN
+    model = FasterRCNN(
+        backbone,
+        num_classes=num_classes,
+        rpn_anchor_generator=anchor_generator,
+        box_roi_pool=roi_pooler
+    )
+
+    return model
