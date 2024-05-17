@@ -240,10 +240,20 @@ class DetectionTransform(nn.Module):
 
 def get_transformsimple(train):
     transforms = []
+    
+    # Converting PIL images to tensor
     transforms.append(T.PILToTensor())
-    transforms.append(T.ToDtype(torch.float, scale=True))
-    # if train:
-    #     transforms.append(RandomHorizontalFlip(0.5))
+    
+    # Converting to float and scale from 0-255 to 0-1
+    transforms.append(T.ConvertImageDtype(torch.float))
+    
+    if train:
+        # Random horizontal flip with a probability of 0.5
+        transforms.append(T.RandomHorizontalFlip(0.5))
+
+        # Random rotation with a range of degrees
+        transforms.append(T.RandomRotation(degrees=(-30, 30)))
+    
     return T.Compose(transforms)
 
 def test_imagetransform(images, target, image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225]):
