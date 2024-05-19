@@ -354,25 +354,17 @@ def simplemodelevaluate(model, data_loader, device):
 
 @torch.inference_mode()
 def modelevaluate(model, data_loader, device):
-    n_threads = torch.get_num_threads()
-    # FIXME remove this and make paste_masks_in_image run on the GPU
-    torch.set_num_threads(1)
-    cpu_device = torch.device("cpu")
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = "Test:"
 
-    coco = get_coco_api_from_dataset(data_loader.dataset)
-    iou_types = utils._get_iou_types(model)
-    coco_evaluator = CocoEvaluator(coco, iou_types)
+    with torch.no_grad():
+        for batch in metric_logger.log_every(data_loader, 100, header):
+            images, targets = batch['img'], batch['target']
+            images = list(img.to(device) for img in images)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-    for images, targets in metric_logger.log_every(data_loader, 100, header):
-        images = list(img.to(device) for img in images)
-
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        model_time = time.time()
-        outputs = model(images)
+            outputs = model(images)
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         model_time = time.time() - model_time
@@ -455,9 +447,20 @@ def yoloconvert_to_coco_api(ds):#mykittidetectiondataset
     return coco_ds
 
 def yoloevaluate(model, data_loader, preprocess, device):
-
-    cpu_device = torch.device("cpu")
     model.eval()
+    results = []
+
+    with torch.no_grad():
+        for batch in data_loader:
+            images = batch['img']
+            original_image_sizes = batch['orig_shape']
+
+            images = preprocess(images)
+            outputs = model(images)
+
+            # Postprocess the outputs
+            detections = model.postprocess(outputs, original_image_sizes)
+            results.extend(detections)
 
     #coco = get_coco_api_from_dataset(data_loader.dataset) #go through the whole dataset, convert_to_coco_api
     #coco = yoloconvert_to_coco_api(data_loader)
